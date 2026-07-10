@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+
+# Generated lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Vite / TypeScript build cache
+*.tsbuildinfo
+.vite/
+
+# Editor and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local env files
+.env
+.env.local
+.env.*.local
