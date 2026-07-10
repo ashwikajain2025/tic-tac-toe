@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Smooth dark-mode background transitions */
+@layer base {
+  body {
+    @apply transition-colors duration-300;
+  }
+}
