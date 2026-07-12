@@ -58,10 +58,10 @@ export function useGame(community?: CommunityGameOptions): GameState {
         const updated: Scores = { ...scores, [result.winner]: scores[result.winner] + 1 };
         setScores(updated);
 
-        // Record result in community store
+        // Record result in community store (fire-and-forget — async, no await needed)
         if (community) {
           const winnerId = result.winner === 'X' ? community.playerX.id : community.playerO.id;
-          recordGame(community.communityId, community.playerX.id, community.playerO.id, winnerId);
+          recordGame(community.communityId, community.playerX.id, community.playerO.id, winnerId).catch(console.error);
         }
       } else if (checkDraw(nextBoard)) {
         setBoard(nextBoard);
@@ -71,7 +71,7 @@ export function useGame(community?: CommunityGameOptions): GameState {
         setScores(updated);
 
         if (community) {
-          recordGame(community.communityId, community.playerX.id, community.playerO.id, null);
+          recordGame(community.communityId, community.playerX.id, community.playerO.id, null).catch(console.error);
         }
       } else {
         setBoard(nextBoard);

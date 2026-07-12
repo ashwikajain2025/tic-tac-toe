@@ -1,180 +1,218 @@
 /**
- * In-memory community database.
- * All data lives in module-level Maps and is shared across the app for the
- * lifetime of the browser session.  Nothing is written to localStorage —
- * truly in-memory as requested.
+ * communityStore.ts — async Supabase-backed version.
+ * Same public API surface as the in-memory version, but every function is async
+ * and reads/writes from the Supabase database.
  */
 
-import type { Community, PlayerProfile, GameRecord, LeaderboardEntry } from '../types/game';
+import { supabase } from '../lib/supabase';
+import type { Community, PlayerProfile, LeaderboardEntry } from '../types/game';
+import type { CommunityRow, PlayerRow, LeaderboardRow } from './communityStore.types';
 
-// ─── Storage ─────────────────────────────────────────────────────────────────
+// ─── Row → domain mappers ────────────────────────────────────────────────────
 
-const communities = new Map<string, Community>();
-const players     = new Map<string, PlayerProfile>();
-const gameRecords = new Map<string, GameRecord>();
+function toCommunity(row: CommunityRow, playerIds: string[]): Community {
+  return {
+    id: row.id,
+    name: row.name,
+    createdAt: new Date(row.created_at).getTime(),
+    playerIds: playerIds as unknown as [string],
+  };
+}
 
-// ─── Tiny uuid helper (no dependency needed) ─────────────────────────────────
-
-function uid(): string {
-  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+function toPlayerProfile(row: PlayerRow): PlayerProfile {
+  return {
+    id: row.id,
+    name: row.name,
+    communityId: row.community_id,
+    wins: row.wins,
+    losses: row.losses,
+    draws: row.draws,
+    gamesPlayed: row.games_played,
+  };
 }
 
 // ─── Community operations ────────────────────────────────────────────────────
 
-/** Create a new community and return it. */
-export function createCommunity(name: string): Community {
-  const id = uid();
-  const community: Community = { id, name, createdAt: Date.now(), playerIds: [] as unknown as [string] };
-  communities.set(id, community);
-  return community;
+/** Create a new community. */
+export async function createCommunity(name: string): Promise<Community> {
+  const { data, error } = await supabase
+    .from('communities')
+    .insert({ name: name.trim() })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return toCommunity(data, []);
 }
 
-/** Find a community by its name (case-insensitive). Returns undefined if not found. */
-export function findCommunityByName(name: string): Community | undefined {
-  const lower = name.trim().toLowerCase();
-  for (const c of communities.values()) {
-    if (c.name.trim().toLowerCase() === lower) return c;
-  }
-  return undefined;
+/** Find a community by name (case-insensitive). */
+export async function findCommunityByName(name: string): Promise<Community | undefined> {
+  const { data, error } = await supabase
+    .from('communities')
+    .select('*, players(id)')
+    .ilike('name', name.trim())
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return undefined;
+  const ids = ((data as CommunityRow & { players: { id: string }[] }).players ?? []).map((p) => p.id);
+  return toCommunity(data, ids);
 }
 
-/** Get a community by id. */
-export function getCommunity(id: string): Community | undefined {
-  return communities.get(id);
-}
-
-/** Return all communities. */
-export function getAllCommunities(): Community[] {
-  return Array.from(communities.values());
+/** Return all communities with their player id lists. */
+export async function getAllCommunities(): Promise<Community[]> {
+  const { data, error } = await supabase
+    .from('communities')
+    .select('*, players(id)')
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => {
+    const ids = ((row as CommunityRow & { players: { id: string }[] }).players ?? []).map((p) => p.id);
+    return toCommunity(row, ids);
+  });
 }
 
 // ─── Player operations ───────────────────────────────────────────────────────
 
 /**
- * Join (or re-join) a community with a given player name.
- * If a player with that name already exists in the community, returns them.
- * If the community already has 2 members neither of whom matches, throws.
+ * Join a community as a named player.
+ * - If the player name already exists in the community, returns their profile.
+ * - Assigns slot 1 (X) if first, slot 2 (O) if second.
+ * - Throws if the community already has 2 different players.
  */
-export function joinCommunity(communityId: string, playerName: string): PlayerProfile {
-  const community = communities.get(communityId);
-  if (!community) throw new Error('Community not found');
-
+export async function joinCommunity(communityId: string, playerName: string): Promise<PlayerProfile> {
   const trimmed = playerName.trim();
 
-  // Check if player already exists in community
-  for (const pid of community.playerIds) {
-    const p = players.get(pid);
-    if (p && p.name.toLowerCase() === trimmed.toLowerCase()) return p;
+  // Check if this name is already a member
+  const { data: existing } = await supabase
+    .from('players')
+    .select()
+    .eq('community_id', communityId)
+    .ilike('name', trimmed)
+    .maybeSingle();
+
+  if (existing) return toPlayerProfile(existing);
+
+  // Count current players to determine slot
+  const { count } = await supabase
+    .from('players')
+    .select('id', { count: 'exact', head: true })
+    .eq('community_id', communityId);
+
+  if ((count ?? 0) >= 2) throw new Error('Community already has 2 players');
+
+  const slot = ((count ?? 0) + 1) as 1 | 2;
+
+  const { data, error } = await supabase
+    .from('players')
+    .insert({ name: trimmed, community_id: communityId, slot })
+    .select()
+    .single();
+
+  if (error) {
+    // Unique constraint violation — someone else just took the slot
+    if (error.code === '23505') throw new Error('Community already has 2 players');
+    throw new Error(error.message);
   }
 
-  if (community.playerIds.length >= 2) {
-    throw new Error('Community already has 2 players');
-  }
-
-  const id = uid();
-  const profile: PlayerProfile = {
-    id, name: trimmed, communityId,
-    wins: 0, losses: 0, draws: 0, gamesPlayed: 0,
-  };
-  players.set(id, profile);
-
-  // Append player to community
-  (community.playerIds as string[]).push(id);
-  communities.set(communityId, community);
-
-  return profile;
+  return toPlayerProfile(data);
 }
 
-/** Get players in a community (ordered: first-joined = X, second-joined = O). */
-export function getCommunityPlayers(communityId: string): [PlayerProfile, PlayerProfile] | null {
-  const community = communities.get(communityId);
-  if (!community || community.playerIds.length < 2) return null;
-  const ids = community.playerIds as string[];
-  const p1 = players.get(ids[0]);
-  const p2 = players.get(ids[1]);
-  if (!p1 || !p2) return null;
-  return [p1, p2];
+/** Get both players in a community (slot 1 = X, slot 2 = O), or null if < 2 joined. */
+export async function getCommunityPlayers(communityId: string): Promise<[PlayerProfile, PlayerProfile] | null> {
+  const { data, error } = await supabase
+    .from('players')
+    .select()
+    .eq('community_id', communityId)
+    .order('slot', { ascending: true });
+  if (error) throw new Error(error.message);
+  if (!data || data.length < 2) return null;
+  return [toPlayerProfile(data[0]), toPlayerProfile(data[1])];
 }
 
-/** Return all communities a player (by name) is a member of, along with their profile. */
-export function getCommunitiesForPlayer(
+/** Return all communities a named player is a member of. */
+export async function getCommunitiesForPlayer(
   playerName: string,
-): Array<{ community: Community; player: PlayerProfile }> {
-  const lower = playerName.trim().toLowerCase();
-  const result: Array<{ community: Community; player: PlayerProfile }> = [];
+): Promise<Array<{ community: Community; player: PlayerProfile }>> {
+  const { data, error } = await supabase
+    .from('players')
+    .select('*, communities(*, players(id))')
+    .ilike('name', playerName.trim());
+  if (error) throw new Error(error.message);
 
-  for (const player of players.values()) {
-    if (player.name.toLowerCase() !== lower) continue;
-    const community = communities.get(player.communityId);
-    if (community) result.push({ community, player });
-  }
-
-  return result;
+  return (data ?? []).map((row) => {
+    type Joined = PlayerRow & {
+      communities: CommunityRow & { players: { id: string }[] };
+    };
+    const r = row as Joined;
+    const ids = (r.communities.players ?? []).map((p) => p.id);
+    return {
+      community: toCommunity(r.communities, ids),
+      player: toPlayerProfile(r),
+    };
+  });
 }
 
 // ─── Game record operations ──────────────────────────────────────────────────
 
-/** Record a completed game and update player stats. */
-export function recordGame(
+/** Record a completed game and atomically increment player stats. */
+export async function recordGame(
   communityId: string,
   playerXId: string,
   playerOId: string,
   winnerId: string | null,
-): GameRecord {
-  const record: GameRecord = {
-    id: uid(),
-    communityId,
-    playerXId,
-    playerOId,
-    winnerId,
-    playedAt: Date.now(),
-  };
-  gameRecords.set(record.id, record);
+): Promise<void> {
+  // Insert game record
+  const { error: recErr } = await supabase
+    .from('game_records')
+    .insert({ community_id: communityId, player_x_id: playerXId, player_o_id: playerOId, winner_id: winnerId });
+  if (recErr) throw new Error(recErr.message);
 
-  // Update stats
-  const updatePlayer = (id: string, result: 'win' | 'loss' | 'draw') => {
-    const p = players.get(id);
-    if (!p) return;
-    const updated: PlayerProfile = {
-      ...p,
-      gamesPlayed: p.gamesPlayed + 1,
-      wins:   result === 'win'  ? p.wins + 1   : p.wins,
-      losses: result === 'loss' ? p.losses + 1 : p.losses,
-      draws:  result === 'draw' ? p.draws + 1  : p.draws,
-    };
-    players.set(id, updated);
-  };
+  // Fetch current stats for both players
+  const { data: ps, error: psErr } = await supabase
+    .from('players')
+    .select()
+    .in('id', [playerXId, playerOId]);
+  if (psErr) throw new Error(psErr.message);
 
-  if (winnerId === null) {
-    updatePlayer(playerXId, 'draw');
-    updatePlayer(playerOId, 'draw');
-  } else {
-    const loserId = winnerId === playerXId ? playerOId : playerXId;
-    updatePlayer(winnerId, 'win');
-    updatePlayer(loserId,  'loss');
+  for (const p of ps ?? []) {
+    let wins   = p.wins;
+    let losses = p.losses;
+    let draws  = p.draws;
+
+    if (winnerId === null) {
+      draws += 1;
+    } else if (p.id === winnerId) {
+      wins += 1;
+    } else {
+      losses += 1;
+    }
+
+    await supabase
+      .from('players')
+      .update({ wins, losses, draws, games_played: p.games_played + 1 })
+      .eq('id', p.id);
   }
-
-  return record;
 }
 
 // ─── Leaderboard ─────────────────────────────────────────────────────────────
 
-/** Returns all players across all communities sorted by win-rate desc, then wins desc. */
-export function getLeaderboard(): LeaderboardEntry[] {
-  const entries: LeaderboardEntry[] = [];
+/** Fetch the leaderboard view, already sorted by win-rate desc. */
+export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
+  const { data, error } = await supabase
+    .from('leaderboard')
+    .select();
+  if (error) throw new Error(error.message);
 
-  for (const player of players.values()) {
-    if (player.gamesPlayed === 0) continue;
-    const community = communities.get(player.communityId);
-    const winRate = Math.round((player.wins / player.gamesPlayed) * 100);
-    entries.push({
-      player,
-      communityName: community?.name ?? '—',
-      winRate,
-    });
-  }
-
-  return entries.sort((a, b) =>
-    b.winRate - a.winRate || b.player.wins - a.player.wins,
-  );
+  return (data ?? []).map((row: LeaderboardRow) => ({
+    player: {
+      id: row.id,
+      name: row.name,
+      communityId: row.community_id,
+      wins: row.wins,
+      losses: row.losses,
+      draws: row.draws,
+      gamesPlayed: row.games_played,
+    },
+    communityName: row.community_name,
+    winRate: row.win_rate,
+  }));
 }
