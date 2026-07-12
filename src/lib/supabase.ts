@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js';
-import type { Database } from '../store/communityStore.types';
 
 const supabaseUrl  = import.meta.env.VITE_SUPABASE_URL  as string;
 const supabaseAnon = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -10,4 +9,4 @@ if (!supabaseUrl || !supabaseAnon) {
   );
 }
 
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnon);
+export const supabase = createClient(supabaseUrl, supabaseAnon);

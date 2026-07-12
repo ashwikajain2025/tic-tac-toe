@@ -47,24 +47,27 @@ export interface Database {
         Row: CommunityRow;
         Insert: Omit<CommunityRow, 'id' | 'created_at'>;
         Update: Partial<Omit<CommunityRow, 'id'>>;
+        Relationships: [];
       };
       players: {
         Row: PlayerRow;
         Insert: Omit<PlayerRow, 'id' | 'wins' | 'losses' | 'draws' | 'games_played'>;
         Update: Partial<Omit<PlayerRow, 'id'>>;
+        Relationships: [];
       };
       game_records: {
         Row: GameRecordRow;
         Insert: Omit<GameRecordRow, 'id' | 'played_at'>;
-        Update: never;
+        Update: Partial<Omit<GameRecordRow, 'id'>>;
+        Relationships: [];
       };
     };
     Views: {
       leaderboard: {
         Row: LeaderboardRow;
+        Relationships: [];
       };
     };
     Functions: Record<string, never>;
-    Enums: Record<string, never>;
   };
 }
