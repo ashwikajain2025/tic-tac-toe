@@ -28,3 +28,41 @@ export interface Scores {
   O: number;
   draws: number;
 }
+
+// ─── Community / multiplayer types ────────────────────────────────────────────
+
+/** A named player who has joined a community. */
+export interface PlayerProfile {
+  id: string;           // unique uuid
+  name: string;
+  communityId: string;
+  wins: number;
+  losses: number;
+  draws: number;
+  gamesPlayed: number;
+}
+
+/** A community that two players join to play together. */
+export interface Community {
+  id: string;           // unique uuid
+  name: string;
+  createdAt: number;    // timestamp
+  playerIds: [string, string] | [string]; // 1 or 2 members
+}
+
+/** A single completed game record. */
+export interface GameRecord {
+  id: string;
+  communityId: string;
+  playerXId: string;
+  playerOId: string;
+  winnerId: string | null; // null = draw
+  playedAt: number;
+}
+
+/** Entry for the global leaderboard. */
+export interface LeaderboardEntry {
+  player: PlayerProfile;
+  communityName: string;
+  winRate: number;      // 0-100
+}

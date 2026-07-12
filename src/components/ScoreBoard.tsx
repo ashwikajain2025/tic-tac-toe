@@ -3,6 +3,8 @@ import type { Scores } from '../types/game';
 interface ScoreBoardProps {
   scores: Scores;
   onResetScores: () => void;
+  /** Named player labels — if provided, shown instead of "X" / "O" */
+  playerNames?: { X: string; O: string };
 }
 
 interface ScoreCardProps {
@@ -11,28 +13,26 @@ interface ScoreCardProps {
   accent: string;
 }
 
-/** A single coloured stat card. */
 function ScoreCard({ label, value, accent }: ScoreCardProps) {
   return (
     <div
       className={[
         'flex flex-col items-center justify-center gap-1',
-        'rounded-xl px-4 py-3 flex-1',
+        'rounded-xl px-3 py-3 flex-1',
         'border-2',
         accent,
       ].join(' ')}
     >
       <span className="text-2xl font-extrabold leading-none">{value}</span>
-      <span className="text-xs font-semibold uppercase tracking-wide opacity-75">{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-wide opacity-75 text-center leading-tight">{label}</span>
     </div>
   );
 }
 
-/**
- * Shows X wins, O wins, and draws.
- * Scores persist in localStorage across sessions.
- */
-export function ScoreBoard({ scores, onResetScores }: ScoreBoardProps) {
+export function ScoreBoard({ scores, onResetScores, playerNames }: ScoreBoardProps) {
+  const xLabel = playerNames ? `${playerNames.X}` : 'X Wins';
+  const oLabel = playerNames ? `${playerNames.O}` : 'O Wins';
+
   return (
     <section aria-label="Scoreboard" className="w-full">
       <h2 className="text-center text-xs font-semibold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-3">
@@ -41,7 +41,7 @@ export function ScoreBoard({ scores, onResetScores }: ScoreBoardProps) {
 
       <div className="flex gap-3 mb-4">
         <ScoreCard
-          label="X Wins"
+          label={xLabel}
           value={scores.X}
           accent="border-violet-300 dark:border-violet-700 text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20"
         />
@@ -51,7 +51,7 @@ export function ScoreBoard({ scores, onResetScores }: ScoreBoardProps) {
           accent="border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800"
         />
         <ScoreCard
-          label="O Wins"
+          label={oLabel}
           value={scores.O}
           accent="border-rose-300 dark:border-rose-700 text-rose-500 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20"
         />

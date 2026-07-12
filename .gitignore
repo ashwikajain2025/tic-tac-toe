@@ -1,5 +1,8 @@
 # Dependencies
 node_modules/
+tic-tac-toe/
+tic-tac-toe-expo/
+TicTacToe-iOS/
 
 # Build output
 dist/

@@ -4,6 +4,8 @@ interface StatusProps {
   status: GameStatus;
   currentPlayer: Player;
   winner: Player | null;
+  /** Named player labels — if provided, shown instead of "X" / "O" */
+  playerNames?: { X: string; O: string };
 }
 
 /** Colour accent classes per player. */
@@ -12,18 +14,15 @@ const PLAYER_COLORS: Record<Player, string> = {
   O: 'text-rose-500  dark:text-rose-400  font-bold',
 };
 
-/**
- * Displays a one-line message describing the current game state:
- * whose turn it is, who won, or that the game ended in a draw.
- */
-export function Status({ status, currentPlayer, winner }: StatusProps) {
+export function Status({ status, currentPlayer, winner, playerNames }: StatusProps) {
+  const nameOf = (p: Player) => playerNames ? `${playerNames[p]} (${p})` : `Player ${p}`;
+
   let message: React.ReactNode;
 
   if (status === 'won' && winner) {
     message = (
       <>
-        Player{' '}
-        <span className={PLAYER_COLORS[winner]}>{winner}</span> wins! 🎉
+        <span className={PLAYER_COLORS[winner]}>{nameOf(winner)}</span> wins! 🎉
       </>
     );
   } else if (status === 'draw') {
@@ -31,9 +30,8 @@ export function Status({ status, currentPlayer, winner }: StatusProps) {
   } else {
     message = (
       <>
-        Player{' '}
-        <span className={PLAYER_COLORS[currentPlayer]}>{currentPlayer}</span>'s
-        turn
+        <span className={PLAYER_COLORS[currentPlayer]}>{nameOf(currentPlayer)}</span>
+        's turn
       </>
     );
   }
