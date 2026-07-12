@@ -96,6 +96,22 @@ export function getCommunityPlayers(communityId: string): [PlayerProfile, Player
   return [p1, p2];
 }
 
+/** Return all communities a player (by name) is a member of, along with their profile. */
+export function getCommunitiesForPlayer(
+  playerName: string,
+): Array<{ community: Community; player: PlayerProfile }> {
+  const lower = playerName.trim().toLowerCase();
+  const result: Array<{ community: Community; player: PlayerProfile }> = [];
+
+  for (const player of players.values()) {
+    if (player.name.toLowerCase() !== lower) continue;
+    const community = communities.get(player.communityId);
+    if (community) result.push({ community, player });
+  }
+
+  return result;
+}
+
 // ─── Game record operations ──────────────────────────────────────────────────
 
 /** Record a completed game and update player stats. */
