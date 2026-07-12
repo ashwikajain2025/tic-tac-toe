@@ -100,7 +100,7 @@ export default function App() {
         {/* ── Leaderboard ────────────────────────────────────────────────── */}
         {screen === 'leaderboard' && (
           <div className="w-full bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm border border-slate-100 dark:border-slate-700">
-            <LeaderboardScreen onBack={() => setScreen('lobby')} />
+            <LeaderboardScreen onBack={() => setScreen(communitySession ? 'game' : 'lobby')} />
           </div>
         )}
 
